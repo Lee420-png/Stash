@@ -1,0 +1,6 @@
+{
+  "name": "Stash - Personal Inspiration & Link Library",
+  "description": "A minimal, premium personal bookmarking and inspiration library for design, code, tools, and creative discoveries.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
