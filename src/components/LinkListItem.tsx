@@ -24,6 +24,7 @@ interface Props {
   onEdit: (link: LinkItem) => void;
   onSelectTag: (tag: string) => void;
   onOpenVibeCode: (link: LinkItem) => void;
+  aiMatchReason?: string;
 }
 
 export const LinkListItem: React.FC<Props> = ({
@@ -34,6 +35,7 @@ export const LinkListItem: React.FC<Props> = ({
   onEdit,
   onSelectTag,
   onOpenVibeCode,
+  aiMatchReason,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -84,11 +86,16 @@ export const LinkListItem: React.FC<Props> = ({
               {link.domain}
             </span>
           </div>
-          {link.description && (
+          {aiMatchReason ? (
+            <p className="text-[11px] text-[#1D4ED8] bg-blue-50/80 px-2 py-0.5 rounded border border-blue-200/60 truncate flex items-center gap-1 font-medium mt-0.5">
+              <Sparkles className="w-3 h-3 text-[#2563EB] shrink-0" />
+              <span className="truncate">{aiMatchReason}</span>
+            </p>
+          ) : link.description ? (
             <p className="text-[11px] text-[#737373] truncate hidden md:block">
               {link.description}
             </p>
-          )}
+          ) : null}
         </div>
       </div>
 

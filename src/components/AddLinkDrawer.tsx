@@ -141,6 +141,48 @@ export const AddLinkDrawer: React.FC<Props> = ({
     }
   };
 
+  const [isEnrichingWithAi, setIsEnrichingWithAi] = useState(false);
+
+  const handleAiEnrich = async () => {
+    if (!url.trim()) return;
+    setIsEnrichingWithAi(true);
+    try {
+      const res = await fetch('/api/ai-enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          title,
+          description,
+          domain,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          if (data.cleanDescription && (!description || description.length < 20)) {
+            setDescription(data.cleanDescription);
+          }
+          if (data.category && categories.includes(data.category)) {
+            setCategory(data.category);
+          }
+          if (data.suggestedTags && Array.isArray(data.suggestedTags)) {
+            setSuggestedTags(data.suggestedTags);
+            const combined = Array.from(new Set([...tags, ...data.suggestedTags.slice(0, 4)]));
+            setTags(combined);
+          }
+          if (data.vibeCodePrompt) {
+            setVibeCodePrompt(data.vibeCodePrompt);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('AI enrich error:', e);
+    } finally {
+      setIsEnrichingWithAi(false);
+    }
+  };
+
   const handleAddTag = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!tagInput.trim()) return;
@@ -263,9 +305,32 @@ export const AddLinkDrawer: React.FC<Props> = ({
                 </div>
               )}
             </div>
-            <p className="text-[11px] text-[#737373]">
-              Paste URL to automatically extract title, preview image, category, and tags.
-            </p>
+            <div className="flex items-center justify-between gap-2 pt-0.5">
+              <p className="text-[11px] text-[#737373]">
+                Paste URL to automatically extract metadata.
+              </p>
+              {url.trim() && (
+                <button
+                  type="button"
+                  onClick={handleAiEnrich}
+                  disabled={isEnrichingWithAi}
+                  className="px-2.5 py-1 rounded-md text-[11px] font-semibold text-[#2563EB] bg-blue-50 hover:bg-blue-100 border border-blue-200/80 flex items-center gap-1 transition shadow-2xs disabled:opacity-50"
+                  title="Use Gemini to generate tags, category, and vibe prompt"
+                >
+                  {isEnrichingWithAi ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin text-[#2563EB]" />
+                      <span>Enriching...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3 h-3 text-[#2563EB]" />
+                      <span>AI Enrich with Gemini</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
 
           {fetchNotice && (

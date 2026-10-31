@@ -26,6 +26,7 @@ interface Props {
   onSelectTag: (tag: string) => void;
   onAddToCollection: (linkId: string, collectionId: string) => void;
   onOpenVibeCode: (link: LinkItem) => void;
+  aiMatchReason?: string;
 }
 
 export const LinkCard: React.FC<Props> = ({
@@ -36,6 +37,7 @@ export const LinkCard: React.FC<Props> = ({
   onEdit,
   onSelectTag,
   onOpenVibeCode,
+  aiMatchReason,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -136,6 +138,16 @@ export const LinkCard: React.FC<Props> = ({
             </div>
             <span className="text-[11px] text-[#A3A3A3] shrink-0 ml-2">{formattedDate}</span>
           </div>
+
+          {/* AI Match Reason Highlight (if present from AI search) */}
+          {aiMatchReason && (
+            <div className="mb-2 p-2 rounded-lg bg-blue-50/90 border border-blue-200/80 text-xs text-[#1D4ED8] flex items-start gap-1.5 shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-[#2563EB] shrink-0 mt-0.5" />
+              <span className="font-medium line-clamp-2 leading-relaxed">
+                {aiMatchReason}
+              </span>
+            </div>
+          )}
 
           {/* Link Title */}
           <h3 className="text-base font-semibold text-[#171717] group-hover:text-[#2563EB] transition-colors leading-snug mb-1.5 line-clamp-2">

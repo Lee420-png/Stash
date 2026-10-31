@@ -46,3 +46,13 @@ export type SortOption =
   | 'favorites';
 
 export type ViewMode = 'grid' | 'list';
+
+export interface AiSearchResult {
+  matchedLinkIds: string[];
+  relevanceReasons: Record<string, string>;
+  summary: string;
+  suggestedTags?: string[];
+  suggestedQueries?: string[];
+  source?: 'gemini' | 'heuristic';
+}
+

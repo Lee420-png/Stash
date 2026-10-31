@@ -21,6 +21,7 @@ interface Props {
   onOpenAddDrawer: () => void;
   onOpenCollectionsModal: () => void;
   onOpenBackupModal: () => void;
+  onOpenAiSearch: (initialQuery?: string) => void;
   totalLinksCount: number;
 }
 
@@ -32,8 +33,15 @@ export const Header: React.FC<Props> = ({
   onOpenAddDrawer,
   onOpenCollectionsModal,
   onOpenBackupModal,
+  onOpenAiSearch,
   totalLinksCount,
 }) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      onOpenAiSearch(searchQuery);
+    }
+  };
+
   return (
     <header className="sticky top-0 z-30 w-full bg-white/95 backdrop-blur-md border-b border-[#EAEAEA]">
       <div className="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between gap-4">
@@ -52,7 +60,7 @@ export const Header: React.FC<Props> = ({
 
         {/* Global Search Bar */}
         <div className="flex-1 max-w-lg mx-2">
-          <div className="relative">
+          <div className="relative flex items-center">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#737373]">
               <Search className="w-4 h-4" />
             </div>
@@ -60,22 +68,46 @@ export const Header: React.FC<Props> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search links, tags, domains, personal notes... (Press / to search)"
-              className="w-full pl-9 pr-8 py-2 rounded-lg bg-[#F8F9FA] hover:bg-[#F5F7FA] focus:bg-white border border-[#EAEAEA] text-sm text-[#171717] placeholder-[#737373] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition"
+              onKeyDown={handleKeyDown}
+              placeholder="Search library or press Enter for AI curator... (/ to search)"
+              className="w-full pl-9 pr-24 py-2 rounded-lg bg-[#F8F9FA] hover:bg-[#F5F7FA] focus:bg-white border border-[#EAEAEA] text-sm text-[#171717] placeholder-[#737373] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition"
             />
-            {searchQuery && (
+            <div className="absolute inset-y-0 right-0 pr-2 flex items-center gap-1">
+              {searchQuery && (
+                <button
+                  onClick={() => onSearchChange('')}
+                  className="p-1 text-[#737373] hover:text-[#171717]"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
               <button
-                onClick={() => onSearchChange('')}
-                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-[#737373] hover:text-[#171717]"
+                type="button"
+                onClick={() => onOpenAiSearch(searchQuery)}
+                className="px-2 py-0.8 text-[11px] font-semibold text-[#2563EB] hover:text-[#1D4ED8] bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200/60 flex items-center gap-1 transition"
+                title="Search with Gemini AI (⌘J)"
               >
-                <X className="w-4 h-4" />
+                <Sparkles className="w-3 h-3 text-[#2563EB]" />
+                <span className="hidden sm:inline">AI</span>
               </button>
-            )}
+            </div>
           </div>
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          {/* Ask AI Librarian Trigger */}
+          <button
+            onClick={() => onOpenAiSearch()}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#2563EB] bg-[#EFF6FF] hover:bg-[#DBEAFE] border border-[#BFDBFE] rounded-lg transition shadow-2xs"
+            title="Ask AI Curator (⌘J)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#2563EB]" />
+            <span className="hidden sm:inline">Ask AI</span>
+            <kbd className="hidden lg:inline text-[10px] px-1 py-0.2 bg-white/80 rounded border border-blue-200 text-[#2563EB] font-mono">⌘J</kbd>
+          </button>
+
           {/* View Mode Toggle */}
           <div className="hidden sm:flex items-center p-1 bg-[#F8F9FA] border border-[#EAEAEA] rounded-lg">
             <button

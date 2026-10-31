@@ -18,6 +18,8 @@ import { EditLinkDrawer } from './components/EditLinkDrawer';
 import { VibeCodeDrawer } from './components/VibeCodeDrawer';
 import { CollectionsModal } from './components/CollectionsModal';
 import { ExportImportModal } from './components/ExportImportModal';
+import { AiSearchModal } from './components/AiSearchModal';
+import { AiSearchBanner } from './components/AiSearchBanner';
 import {
   Bookmark,
   Plus,
@@ -30,9 +32,10 @@ import {
   Archive,
 } from 'lucide-react';
 
-const STORAGE_LINKS_KEY = 'stash_user_links_v3';
-const STORAGE_COLLECTIONS_KEY = 'stash_user_collections_v3';
-const STORAGE_VIEW_KEY = 'stash_view_mode_v3';
+const STORAGE_LINKS_KEY = 'stash_user_links_v8';
+const PREV_STORAGE_LINKS_KEY = 'stash_user_links_v7';
+const STORAGE_COLLECTIONS_KEY = 'stash_user_collections_v6';
+const STORAGE_VIEW_KEY = 'stash_view_mode_v6';
 
 const DEFAULT_CATEGORIES = [
   'All Links',
@@ -49,10 +52,29 @@ export default function App() {
   // Links state
   const [links, setLinks] = useState<LinkItem[]>(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_LINKS_KEY);
+      const stored = localStorage.getItem(STORAGE_LINKS_KEY) || localStorage.getItem(PREV_STORAGE_LINKS_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        const parsed: LinkItem[] = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Reconcile and prepend newly added seed links if not already present
+          const existingUrls = new Set(
+            parsed.map((l) => l.url.trim().toLowerCase().replace(/\/+$/, ''))
+          );
+          const existingIds = new Set(parsed.map((l) => l.id));
+          const missing = INITIAL_USER_LINKS.filter(
+            (item) =>
+              !existingUrls.has(item.url.trim().toLowerCase().replace(/\/+$/, '')) &&
+              !existingIds.has(item.id)
+          );
+          if (missing.length > 0) {
+            const combined = [...missing, ...parsed];
+            try {
+              localStorage.setItem(STORAGE_LINKS_KEY, JSON.stringify(combined));
+            } catch {}
+            return combined;
+          }
+          return parsed;
+        }
       }
     } catch (e) {
       console.error('Error loading stored links:', e);
@@ -100,6 +122,21 @@ export default function App() {
   const [isVibeDrawerOpen, setIsVibeDrawerOpen] = useState(false);
   const [isCollectionsModalOpen, setIsCollectionsModalOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [aiInitialQuery, setAiInitialQuery] = useState('');
+  const [aiFilterState, setAiFilterState] = useState<{
+    isActive: boolean;
+    query: string;
+    summary: string;
+    matchedLinkIds: string[];
+    relevanceReasons: Record<string, string>;
+  }>({
+    isActive: false,
+    query: '',
+    summary: '',
+    matchedLinkIds: [],
+    relevanceReasons: {},
+  });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Persistence effects
@@ -140,6 +177,9 @@ export default function App() {
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setIsAddDrawerOpen(true);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setIsAiModalOpen(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -286,6 +326,40 @@ export default function App() {
     showToast('Library successfully imported!');
   };
 
+  // AI Search Handlers
+  const handleOpenAiSearch = (initialQ?: string) => {
+    if (initialQ) {
+      setAiInitialQuery(initialQ);
+    }
+    setIsAiModalOpen(true);
+  };
+
+  const handleApplyAiFilter = (
+    matchedIds: string[],
+    query: string,
+    summary: string,
+    reasons: Record<string, string>
+  ) => {
+    setAiFilterState({
+      isActive: true,
+      query,
+      summary,
+      matchedLinkIds: matchedIds,
+      relevanceReasons: reasons,
+    });
+    showToast(`AI Curator filtered ${matchedIds.length} matches for "${query}"`);
+  };
+
+  const handleClearAiFilter = () => {
+    setAiFilterState({
+      isActive: false,
+      query: '',
+      summary: '',
+      matchedLinkIds: [],
+      relevanceReasons: {},
+    });
+  };
+
   // Reset all filters
   const handleResetAllFilters = () => {
     setSearchQuery('');
@@ -293,6 +367,7 @@ export default function App() {
     setFilterMode('all');
     setSelectedCollectionId(null);
     setSelectedTags([]);
+    handleClearAiFilter();
   };
 
   // All distinct available tags across library
@@ -307,6 +382,14 @@ export default function App() {
   // Filtered & Sorted links
   const filteredLinks = useMemo(() => {
     let result = [...links];
+
+    // If AI filter mode is active, filter and order by AI relevance ranking
+    if (aiFilterState.isActive) {
+      const idOrder = new Map(aiFilterState.matchedLinkIds.map((id, index) => [id, index]));
+      result = result.filter((l) => idOrder.has(l.id));
+      result.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999));
+      return result;
+    }
 
     // Archive filter
     if (filterMode === 'archived') {
@@ -341,20 +424,30 @@ export default function App() {
       result = result.filter((l) => selectedTags.every((t) => l.tags?.includes(t)));
     }
 
-    // Search filter
+    // Search filter: multi-token with synonym & stem expansion
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
+      const tokens = q.split(/\s+/).filter(Boolean);
+
+      const expandToken = (t: string): string[] => {
+        const list = [t];
+        if (t === 'inspo') list.push('inspiration', 'inspire');
+        if (t === 'screen' || t === 'screens') list.push('screenshot', 'screenshots', 'ui', 'interface');
+        if (t === 'mobile') list.push('appshot', 'appstore', 'ios', 'android', 'phone');
+        if (t === 'vibe' || t === 'vibecoding') list.push('cursor', 'claude', 'lovable', 'prompt');
+        if (t === 'anim' || t === 'motion') list.push('animation', 'animate', 'animista', 'transition');
+        if (t === 'repo') list.push('repository', 'github');
+        if (t === 'sound' || t === 'audio') list.push('sfx', 'uisfx');
+        if (t === 'loader' || t === 'loaders' || t === 'loading') list.push('spinner', 'circleloader', 'circleloaders');
+        return list;
+      };
+
       result = result.filter((l) => {
-        const inTitle = l.title.toLowerCase().includes(q);
-        const inDomain = l.domain.toLowerCase().includes(q);
-        const inUrl = l.url.toLowerCase().includes(q);
-        const inDesc = l.description?.toLowerCase().includes(q);
-        const inNotes = l.notes?.toLowerCase().includes(q);
-        const inTags = l.tags?.some((t) => t.toLowerCase().includes(q));
-        const inCat = typeof l.category === 'string' && l.category.toLowerCase().includes(q);
-        const inPrompt = l.vibeCodePrompt?.toLowerCase().includes(q);
-        const inGithub = l.githubUrl?.toLowerCase().includes(q);
-        return inTitle || inDomain || inUrl || inDesc || inNotes || inTags || inCat || inPrompt || inGithub;
+        const target = `${l.title} ${l.domain} ${l.url} ${l.description || ''} ${l.notes || ''} ${l.tags?.join(' ') || ''} ${l.category || ''} ${l.vibeCodePrompt || ''} ${l.githubUrl || ''}`.toLowerCase();
+        return tokens.every((tok) => {
+          const variants = expandToken(tok);
+          return variants.some((v) => target.includes(v));
+        });
       });
     }
 
@@ -390,7 +483,8 @@ export default function App() {
     activeCategory !== 'All Links' ||
     filterMode !== 'all' ||
     selectedTags.length > 0 ||
-    selectedCollectionId !== null;
+    selectedCollectionId !== null ||
+    aiFilterState.isActive;
 
   return (
     <div className="min-h-screen bg-white text-[#171717] flex flex-col antialiased selection:bg-[#2563EB]/15 selection:text-[#2563EB]">
@@ -403,6 +497,7 @@ export default function App() {
         onOpenAddDrawer={() => setIsAddDrawerOpen(true)}
         onOpenCollectionsModal={() => setIsCollectionsModalOpen(true)}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}
+        onOpenAiSearch={handleOpenAiSearch}
         totalLinksCount={links.length}
       />
 
@@ -447,6 +542,17 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-[1440px] w-full mx-auto px-6 py-8">
+        {/* Active AI Discovery Banner */}
+        {aiFilterState.isActive && (
+          <AiSearchBanner
+            query={aiFilterState.query}
+            summary={aiFilterState.summary}
+            matchCount={filteredLinks.length}
+            onClear={handleClearAiFilter}
+            onRefine={() => handleOpenAiSearch(aiFilterState.query)}
+          />
+        )}
+
         {filteredLinks.length > 0 ? (
           viewMode === 'grid' ? (
             /* Grid View: 3 cols desktop, 2 cols tablet, 1 col mobile */
@@ -463,6 +569,7 @@ export default function App() {
                   onSelectTag={handleToggleTag}
                   onAddToCollection={handleAddToCollection}
                   onOpenVibeCode={handleOpenVibeCode}
+                  aiMatchReason={aiFilterState.isActive ? aiFilterState.relevanceReasons[link.id] : undefined}
                 />
               ))}
             </div>
@@ -480,6 +587,7 @@ export default function App() {
                   onEdit={(l) => setEditingLink(l)}
                   onSelectTag={handleToggleTag}
                   onOpenVibeCode={handleOpenVibeCode}
+                  aiMatchReason={aiFilterState.isActive ? aiFilterState.relevanceReasons[link.id] : undefined}
                 />
               ))}
             </div>
@@ -608,6 +716,16 @@ export default function App() {
         onImportData={handleImportData}
         onResetDemoData={handleResetDemoData}
         onClearAllData={handleClearAll}
+      />
+
+      {/* Stash AI Curator / Semantic Discovery Modal */}
+      <AiSearchModal
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+        links={links}
+        onApplyAiFilter={handleApplyAiFilter}
+        onOpenVibeCode={handleOpenVibeCode}
+        initialQuery={aiInitialQuery}
       />
     </div>
   );
